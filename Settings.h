@@ -62,19 +62,19 @@ public:
     static void stripComments(std::string& str);
     static size_t loadOffsetsList(const std::string& filename, std::set<ADDRINT>& offsetsList);
 
-    Settings() 
-        : followShellcode(SHELLC_FOLLOW_FIRST),
-        traceRDTSC(false),
-        traceINT(false),
-        traceSYSCALL(true),
-        logSectTrans(true),
-        logShelcTrans(true),
-        shortLogging(true),
-        logIndirect(false),
-        hexdumpSize(8),
-        antidebug(ANTIDEBUG_DISABLED),
-        antivm(false),
-        useDebugSym(false)
+    Settings()  // 默认配置
+        : followShellcode(SHELLC_FOLLOW_ANY),
+        traceRDTSC(false),  // 跟踪RDTSC指令
+        traceINT(false),    // 跟踪INT指令
+        traceSYSCALL(true), // 跟踪SYSCALL
+        logSectTrans(true), //
+        logShelcTrans(true),//
+        shortLogging(true), // 
+        logIndirect(false), // 跟随同模块的一些函数调用
+        hexdumpSize(8),     //
+        antidebug(ANTIDEBUG_STANDARD), // 监控标准的反调试手段
+        antivm(false),      // 通过CPUID判断是否是检测HyperVisor的
+        useDebugSym(false)  // 默认使用导出表符号
     {
     }
 
@@ -93,7 +93,7 @@ public:
     size_t hexdumpSize;
     bool hookSleep;
     size_t sleepTime;
-    t_antidebug_options antidebug;
+    t_antidebug_options antidebug; 
     bool antivm; // Trace Anti-VM techniques (WMI queries)
     bool useDebugSym;
 

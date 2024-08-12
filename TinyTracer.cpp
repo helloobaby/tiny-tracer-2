@@ -23,7 +23,7 @@
 #include "PinLocker.h"
 
 #define TOOL_NAME "TinyTracer"
-#define VERSION "2.7.5"
+#define VERSION "7.777"
 
 #include "Util.h"
 #include "Settings.h"
@@ -39,6 +39,7 @@
 
 #ifdef USE_ANTIDEBUG
 #include "AntiDebug.h"
+#include "Anti.h"
 #endif
 
 #ifdef USE_ANTIVM
@@ -173,13 +174,14 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
     /**
     is it a transition from the traced module to a foreign module?
     */
-    if (fromWType == WatchedType::WATCHED_MY_MODULE
-        && !isTargetMy)
+    if (fromWType == WatchedType::WATCHED_MY_MODULE // 返回地址在本模块
+        && !isTargetMy) // 目标地址不在本模块
     {
         ADDRINT RvaFrom = addr_to_rva(addrFrom);
-        if (isTargetPeModule) {
+        if (isTargetPeModule) { // 是否在一个模块内
             const std::string func = get_func_at(addrTo);
             const std::string dll_name = IMG_Name(targetModule);
+            // 判断是否是要过滤的函数
             if (m_Settings.excludedFuncs.contains(dll_name, func)) {
                 return;
             }
@@ -196,7 +198,7 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
     /**
     trace calls from witin a shellcode:
     */
-    if (fromWType == WatchedType::WATCHED_SHELLCODE) {
+    if (fromWType == WatchedType::WATCHED_SHELLCODE) { // 这种情况一般是跟踪Shellcode里面调用系统API
 
         const ADDRINT pageFrom = query_region_base(addrFrom);
         const ADDRINT pageTo = query_region_base(addrTo);
@@ -209,7 +211,9 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
             }
             traceLog.logCall(pageFrom, addrFrom, false, dll_name, func);
         }
-        else if (pageFrom != pageTo) // it is a call to another shellcode
+        // Shellcode跳转到另一个shellcode
+        // 这里作者处理的不好,判断是否是同一块shellcode有点太粗糙了
+        else if (pageFrom != pageTo) // it is a call to another shellcode 
         {
             // add the new shellcode to the set of traced
             if (m_Settings.followShellcode == SHELLC_FOLLOW_RECURSIVE) {
@@ -230,23 +234,21 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
     /**
     save the transition when a shellcode returns to a traced area from an API call:
     */
-    if (fromWType == WatchedType::NOT_WATCHED && !isCallerPeModule // from an untraced shellcode...
-        && isTargetPeModule // ...into an API call
+    if (fromWType == WatchedType::WATCHED_SHELLCODE // 从shellcode返回
+        && isTargetPeModule // 返回到一个模块内
         && ctx //the context was passed: we can check the return
         )
     {
+        std::cout << std::hex << "addrFrom " << addrFrom << std::endl;
         // was the shellcode a proxy for making an API call?
-        const ADDRINT returnAddr = getReturnFromTheStack(ctx);
+        const ADDRINT returnAddr = getReturnFromTheStack(ctx); // 
         const WatchedType toWType = isWatchedAddress(returnAddr); // does it return into the traced area?
-        if (toWType != WatchedType::NOT_WATCHED) {
+        if (toWType != WatchedType::NOT_WATCHED) { // 这里有两种情况,一种是返回到我们的观察模块,一种是又返回到另一块shellcode
             const std::string func = get_func_at(addrTo);
             const std::string dll_name = IMG_Name(targetModule);
-            if (m_Settings.excludedFuncs.contains(dll_name, func)) {
-                return;
-            }
             const ADDRINT pageRet = get_base(returnAddr);
             const ADDRINT RvaFrom = addr_to_rva(addrFrom);
-            const ADDRINT base = isTargetMy ? 0 : get_base(addrFrom);
+            const ADDRINT base = get_base(addrFrom);
 
             traceLog.logCallRet(base, RvaFrom, pageRet, returnAddr, dll_name, func);
         }
@@ -575,7 +577,7 @@ ADDRINT _setTimer(const CONTEXT* ctxt, bool isEax)
         Timer = (UINT64(edx) << 32) | eax;
     }
     else {
-        Timer += 100;
+        Timer += 50;
     }
 
     if (isEax) {
@@ -610,6 +612,7 @@ BOOL isValidReadPtr(VOID* arg1)
     return isReadableAddr;
 }
 
+// 猜参数类型
 std::wstring paramToStr(VOID *arg1)
 {
     if (arg1 == NULL) {
@@ -716,9 +719,15 @@ VOID MonitorFunctionArgs(IMG Image, const WFuncInfo &funcInfo)
     if (argNum > argsMax) argNum = argsMax;
 
     RTN funcRtn = find_by_unmangled_name(Image, fName);
-    if (!RTN_Valid(funcRtn) || !funcInfo.isValid()) return; // failed
+    if (!RTN_Valid(funcRtn) || !funcInfo.isValid()) {
+      std::cout
+          << "[ERROR] find_by_unmangled_name failed , Invalid Function name? "
+          << fName << std::endl;
+        return;  // failed
+    }
 
-    std::cout << "Watch " << IMG_Name(Image) << ": " << fName << " [" << argNum << "]\n";
+    LOG("Watch " + IMG_Name(Image) + " : " + fName + " [" + std::to_string(argNum) + "] " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << RTN_Address(funcRtn)).str() + "\n");
+
     RTN_Open(funcRtn);
 
     RTN_InsertCall(funcRtn, IPOINT_BEFORE, AFUNPTR(LogFunctionArgs),
@@ -788,15 +797,11 @@ VOID InstrumentInstruction(INS ins, VOID *v)
     }
 
     if (INS_IsRDTSC(ins)) {
-        if (m_Settings.traceRDTSC) {
-            INS_InsertCall(
-                ins,
-                IPOINT_BEFORE, (AFUNPTR)RdtscCalled,
-                IARG_CONTEXT,
-                IARG_END
-            );
-        }
-
+      if (m_Settings.traceRDTSC) {
+        INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)RdtscCalled, IARG_CONTEXT,
+                       IARG_END);
+      }
+        // 被pin拉起来的程序rdtsc之间的间距超级大,需要处理一下
         INS_InsertCall(
             ins, 
             IPOINT_AFTER, (AFUNPTR)AlterRdtscValueEdx,
@@ -923,10 +928,10 @@ VOID HookNtDelayExecution(const CHAR* name, UINT64* sleepTimePtr)
 VOID ImageLoad(IMG Image, VOID *v)
 {
     PinLocker locker;
+    const std::string dllName = util::getDllName(IMG_Name(Image));
 
     pInfo.addModule(Image);
     for (size_t i = 0; i < m_Settings.funcWatch.funcs.size(); i++) {
-        const std::string dllName = util::getDllName(IMG_Name(Image));
         if (util::iequals(dllName, m_Settings.funcWatch.funcs[i].dllName)) {
             MonitorFunctionArgs(Image, m_Settings.funcWatch.funcs[i]);
         }
@@ -938,7 +943,7 @@ VOID ImageLoad(IMG Image, VOID *v)
             RTN sleepRtn = find_by_unmangled_name(Image, SLEEP);
             if (RTN_Valid(sleepRtn)) {
                 RTN_Open(sleepRtn);
-                RTN_InsertCall(sleepRtn, IPOINT_BEFORE, (AFUNPTR)HookNtDelayExecution,
+                RTN_InsertCall(sleepRtn, IPOINT_BEFORE, (AFUNPTR)HookNtDelayExecution, //Sleep的时间是由配置决定的
                     IARG_PTR, SLEEP,
                     IARG_FUNCARG_ENTRYPOINT_VALUE, 1, 
                     IARG_END);
@@ -993,11 +998,11 @@ int main(int argc, char *argv[])
 
     if (PIN_Init(argc, argv))
     {
-        return Usage();
+        return Usage(); 
     }
 
     std::string app_name = KnobModuleName.Value();
-    if (app_name.length() == 0) {
+    if (app_name.length() == 0) { // 默认是主程序,可以用-m参数指定DLL模块
         // init App Name:
         for (int i = 1; i < (argc - 1); i++) {
             if (strcmp(argv[i], "--") == 0) {
@@ -1006,19 +1011,19 @@ int main(int argc, char *argv[])
             }
         }
     }
-
+    
+    LOG("Get app_name " + app_name);
     pInfo.init(app_name);
 
     const std::string iniFilename = KnobIniFile.ValueString();
     if (!m_Settings.loadINI(iniFilename)) {
-        std::cerr << "Coud not load the INI file: " << iniFilename << std::endl;
-        m_Settings.saveINI(iniFilename);
+        LOG("Unimplement ini setting\n");
     }
 
     // select mode in which symbols should be initialized
-    SYMBOL_INFO_MODE mode = EXPORT_SYMBOLS;
+    SYMBOL_INFO_MODE mode = EXPORT_SYMBOLS; // 如果要记录调用的操作系统的API的话,DEBUG符号没意义,导出符号就足够了
     if (m_Settings.useDebugSym) {
-        std::cout << "Using debug symbols (if available)\n";
+        LOG("Using debug symbols (if available)\n");
         mode = DEBUG_OR_EXPORT_SYMBOLS;
     }
     PIN_InitSymbolsAlt(mode);
@@ -1027,31 +1032,31 @@ int main(int argc, char *argv[])
         std::string stopOffsetsFile = KnobStopOffsets.ValueString();
         if (stopOffsetsFile.length()) {
             const size_t loaded = Settings::loadOffsetsList(stopOffsetsFile, m_Settings.stopOffsets);
-            std::cout << "Loaded " << loaded << " stop offsets\n";
+            LOG("Loaded " + std::to_string(loaded) + "stop offsets\n");
         }
     }
     if (KnobExcludedListFile.Enabled()) {
-        std::string excludedList = KnobExcludedListFile.ValueString();
+        std::string excludedList = KnobExcludedListFile.ValueString(); // 命令行参数-x指定 一般是excluded.txt
         if (excludedList.length()) {
             m_Settings.excludedFuncs.loadList(excludedList.c_str());
-            std::cout << "Excluded " << m_Settings.excludedFuncs.funcs.size() << " functions\n";
+            LOG( "Excluded " + std::to_string(m_Settings.excludedFuncs.funcs.size()) + " functions\n");
         }
     }
 
     if (KnobWatchListFile.Enabled()) {
-        std::string watchListFile = KnobWatchListFile.ValueString();
+        std::string watchListFile = KnobWatchListFile.ValueString(); // 命令行参数-b指定   一般是params.txt
         if (watchListFile.length()) {
             m_Settings.funcWatch.loadList(watchListFile.c_str(), &m_Settings.excludedFuncs);
-            std::cout << "Watch " << m_Settings.funcWatch.funcs.size() << " functions\n";
-            std::cout << "Watch " << m_Settings.funcWatch.syscalls.size() << " syscalls\n";
+            LOG("Watch " + std::to_string(m_Settings.funcWatch.funcs.size()) + " functions\n");
+            LOG("Watch " + std::to_string(m_Settings.funcWatch.syscalls.size()) + " syscalls\n");
         }
     }
 
     if (KnobSyscallsTable.Enabled()) {
-        std::string syscallsTableFile = KnobSyscallsTable.ValueString();
+        std::string syscallsTableFile = KnobSyscallsTable.ValueString(); // 命令行参数-l指定 一般是syscalls.txt
         if (syscallsTableFile.length()) {
             m_Settings.syscallsTable.load(syscallsTableFile);
-            std::cout << "SyscallTable size: " << m_Settings.syscallsTable.count() << "\n";
+            LOG("SyscallTable size: " + std::to_string(m_Settings.syscallsTable.count()) + '\n');
         }
     }
 
@@ -1078,6 +1083,8 @@ int main(int argc, char *argv[])
     // Register context changes
     PIN_AddContextChangeFunction(OnCtxChange, NULL);
 
+    clearFlags();
+
     std::cerr << "===============================================" << std::endl;
     std::cerr << "This application is instrumented by " << TOOL_NAME << " v." << VERSION << std::endl;
     std::cerr << "Tracing module: " << app_name << std::endl;
@@ -1085,6 +1092,7 @@ int main(int argc, char *argv[])
     {
         std::cerr << "See file " << KnobOutputFile.Value() << " for analysis results" << std::endl;
     }
+    std::cerr << "See file pintool.log" << " for develop logs" << std::endl;
     std::cerr << "===============================================" << std::endl;
 
     // Start the program, never returns

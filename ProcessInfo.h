@@ -32,6 +32,7 @@ public:
         return get_by_addr(Address, m_Sections);
     }
 
+    // 查看这个地址是否属于主模块
     bool isMyAddress(ADDRINT Address)
     {
         if (Address == UNKNOWN_ADDR) {

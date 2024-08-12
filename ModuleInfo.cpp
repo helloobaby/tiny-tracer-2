@@ -102,13 +102,21 @@ std::string get_unmangled_name(RTN rtn)
     return PIN_UndecorateSymbolName(RTN_Name(rtn), UNDECORATION_NAME_ONLY);
 }
 
+// 遍历一个模块的符号
 RTN find_by_unmangled_name(IMG img, const CHAR* fName)
 {
     for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym)) {
         const std::string undFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY);
+#ifdef _DEBUG
+        //LOG("Get Symbol " + undFuncName + " in " + IMG_Name(img) + "\n");
+#endif // _DEBUG
+
         if (undFuncName == fName) {
             const ADDRINT offset = SYM_Value(sym);
-            if (offset == UNKNOWN_ADDR) break;
+            if (offset == UNKNOWN_ADDR) {
+                std::cerr << "Unknow Symbol Offset " << undFuncName << std::endl;
+                break;
+            }
             return RTN_FindByAddress(IMG_LowAddress(img) + offset);
         }
     }

@@ -3,3 +3,4 @@ kernel32;LoadLibraryA;1
 kernel32;GetProcAddress;2
 advapi32;RegQueryValueW;3
 kernel32;CreateFileW;6
+kernel32;LoadLibraryExW;1

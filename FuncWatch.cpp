@@ -3,6 +3,7 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <regex.h>
 
 #include "Util.h"
 
@@ -81,8 +82,8 @@ bool FuncList::contains(const std::string& dll_name, const std::string& func)
     for (auto itr = funcs.begin(); itr != funcs.end(); ++itr) {
         WFuncInfo& fInfo = *itr;
         if (util::iequals(fInfo.dllName, shortDll)) {
+            // 支持正则表达式过滤
             if (fInfo.funcName == func) {
-                //std::cout << "Excluded Func: " << shortDll << "." << func << "\n";
                 return true;
             }
         }

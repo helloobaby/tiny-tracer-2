@@ -37,7 +37,7 @@ void TraceLog::logCall(const ADDRINT prevBase, const ADDRINT prevAddr, const ADD
     m_traceFile << 
         std::hex << prevAddr 
         << DELIMITER 
-        << "called: ?? [" << calledPageBase << "+" << rva << "]"
+        << "call -> <Shellcode> [" << calledPageBase << "+" << rva << "]"
         << std::endl;
     m_traceFile.flush();
 }

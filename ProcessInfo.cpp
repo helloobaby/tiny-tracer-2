@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cctype>
+#include <iostream>
 
 std::string to_lowercase(const std::string &_str)
 {
@@ -41,6 +42,7 @@ void ProcessInfo::addModuleSections(IMG Image, ADDRINT ImageBase)
         s_module section;
         init_section(section, ImageBase, sec);
         m_Sections[section.start] = section;
+        LOG("Section " + section.name + " Start " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << section.start).str() + " " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << section.end).str() + "\n");
     }
 }
 
@@ -53,6 +55,11 @@ bool ProcessInfo::addModule(IMG Image)
         if (myModuleBase == 0) {
             myModuleBase = IMG_LowAddress(Image);
         }
+#ifdef _DEBUG
+        LOG("Pid " + std::to_string(m_myPid));
+        LOG("ImageBase " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << myModuleBase).str() + "\n");
+#endif // _DEBUG
+
         addModuleSections(Image, myModuleBase);
     }
     return true;
