@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <map>
 #include <vector>
+#include "regex.h"
 
 struct RoutineInfo
 {
@@ -29,6 +30,7 @@ struct WFuncInfo : public RoutineInfo
         this->dllName = a.dllName;
         this->funcName = a.funcName;
         this->paramCount = a.paramCount;
+        this->regex = a.regex;
     }
 
     bool load(const std::string &line, char delimiter);
@@ -37,11 +39,12 @@ struct WFuncInfo : public RoutineInfo
 
     bool isValid() const
     {
-        return dllName.length() > 0 && funcName.length() > 0;
+        return dllName.length() > 0 && funcName.length() > 0 ;
     }
 
     std::string dllName;
     std::string funcName;
+    regex_t regex;
 };
 
 struct WSyscallInfo : public RoutineInfo

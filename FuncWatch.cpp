@@ -4,8 +4,9 @@
 #include <fstream>
 #include <sstream>
 #include <regex.h>
-
+#include "assert.h"
 #include "Util.h"
+#include "pin.H"
 
 bool WFuncInfo::load(const std::string &sline, char delimiter)
 {
@@ -15,7 +16,14 @@ bool WFuncInfo::load(const std::string &sline, char delimiter)
 
     this->dllName = args[0];
     this->funcName = args[1];
+    // 同时编译一份正则
     this->paramCount = 0;
+    int r = regcomp(&this->regex, this->funcName.c_str(), REG_EXTENDED| REG_NOSUB);
+    assert(!r);
+    if (r != 0) {
+        std::cerr << "Compile regex fail -> " << this->funcName.c_str() << std::endl;
+        return false;
+    }
 
     if (args.size() >= 3) {
         this->paramCount = util::loadInt(args[2]);
@@ -83,7 +91,10 @@ bool FuncList::contains(const std::string& dll_name, const std::string& func)
         WFuncInfo& fInfo = *itr;
         if (util::iequals(fInfo.dllName, shortDll)) {
             // 支持正则表达式过滤
-            if (fInfo.funcName == func) {
+            //https://stackoverflow.com/questions/35771702/regular-expression-matching-using-regcomp-and-regexec-functions-in-c
+            int r = regexec(&fInfo.regex, func.c_str(), 0, 0, 0);
+            if (r == 0) {
+                LOG("regex match success " + func + "\n");
                 return true;
             }
         }

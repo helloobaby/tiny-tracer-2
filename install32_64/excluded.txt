@@ -1,7 +1,4 @@
-kernelbase;InitializeCriticalSectionEx
 kernel32;GetProcessHeap
-kernelbase;FlsGetValue
+kernelbase;^Fls.*
 kernel32;GetLastError
-kernelbase;FlsSetValue
-ntdll;RtlEnterCriticalSection
-ntdll;RtlLeaveCriticalSection
+ntdll;.*CriticalSection.*

@@ -239,7 +239,8 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
         && ctx //the context was passed: we can check the return
         )
     {
-        std::cout << std::hex << "addrFrom " << addrFrom << std::endl;
+        //std::cout << std::hex << "addrFrom " << addrFrom << std::endl;
+        
         // was the shellcode a proxy for making an API call?
         const ADDRINT returnAddr = getReturnFromTheStack(ctx); // 
         const WatchedType toWType = isWatchedAddress(returnAddr); // does it return into the traced area?
@@ -884,6 +885,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
         ////////////////////////////////////
         // If AntiDebug level is Deep
         ////////////////////////////////////
+        // Deep目前多了个检测0xCC断点
         if (m_Settings.antidebug >= ANTIDEBUG_DEEP) {
             // Check all comparison for 0xCC byte (anti stepinto/stepover checks)
             const UINT32 opIdx = 1;
@@ -1032,7 +1034,7 @@ int main(int argc, char *argv[])
         std::string stopOffsetsFile = KnobStopOffsets.ValueString();
         if (stopOffsetsFile.length()) {
             const size_t loaded = Settings::loadOffsetsList(stopOffsetsFile, m_Settings.stopOffsets);
-            LOG("Loaded " + std::to_string(loaded) + "stop offsets\n");
+            LOG("Loaded " + std::to_string(loaded) + " stop offsets\n");
         }
     }
     if (KnobExcludedListFile.Enabled()) {

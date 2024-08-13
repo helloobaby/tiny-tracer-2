@@ -73,7 +73,7 @@ public:
         logIndirect(false), // 跟随同模块的一些函数调用
         hexdumpSize(8),     //
         antidebug(ANTIDEBUG_STANDARD), // 监控标准的反调试手段
-        antivm(false),      // 通过CPUID判断是否是检测HyperVisor的
+        antivm(true),      // 通过CPUID判断是否是检测HyperVisor的
         useDebugSym(false)  // 默认使用导出表符号
     {
     }

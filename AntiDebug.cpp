@@ -223,6 +223,7 @@ VOID AntiDbg::InterruptCheck(const CONTEXT* ctxt) {
   const ADDRINT Address = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
   const WatchedType wType = isWatchedAddress(Address);
   if (wType == WatchedType::NOT_WATCHED) return;
+  LOG("InterruptCheck ... \n");
 
   int interruptID = 0;
   if (!fetchInterruptID(Address, interruptID)) return;
