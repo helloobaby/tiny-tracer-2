@@ -856,6 +856,30 @@ VOID InstrumentInstruction(INS ins, VOID *v)
     ////////////////////////////////////
     if (m_Settings.antidebug != ANTIDEBUG_DISABLED) {
 
+#ifdef _WIN64
+        const char* POPF_MNEM = "popfq";
+#else
+        const char* POPF_MNEM = "popfd";
+#endif
+        if (util::isStrEqualI(INS_Mnemonic(ins), POPF_MNEM))
+        {
+            INS_InsertCall(
+                ins,
+                IPOINT_BEFORE, (AFUNPTR)AntiDbg::FlagsCheck,
+                IARG_CONTEXT,
+                IARG_THREAD_ID,
+                IARG_END
+            );
+
+            INS_InsertCall(
+                ins,
+                IPOINT_AFTER, (AFUNPTR)AntiDbg::FlagsCheck_after,
+                IARG_CONTEXT,
+                IARG_THREAD_ID,
+                IARG_INST_PTR,
+                IARG_END
+            );
+        }
         if (INS_IsInterrupt(ins)) {
             INS_InsertCall(
                 ins,
