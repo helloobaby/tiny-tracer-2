@@ -223,25 +223,28 @@ VOID AntiDbg::InterruptCheck(const CONTEXT* ctxt) {
   const ADDRINT Address = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
   const WatchedType wType = isWatchedAddress(Address);
   if (wType == WatchedType::NOT_WATCHED) return;
-  LOG("InterruptCheck ... \n");
 
-  int interruptID = 0;
+  int interruptID = -1;
   if (!fetchInterruptID(Address, interruptID)) return;
+  //std::cout << "interruptID " << std::hex << interruptID << std::endl;
 
   if (interruptID == 1) {
     LogAntiDbg(
         wType, Address, "INT1",
         "https://anti-debug.checkpoint.com/techniques/assembly.html#ice");
   }
-  if (interruptID == 3) {
+  else if (interruptID == 3) {
     LogAntiDbg(
         wType, Address, "INT3",
         "https://anti-debug.checkpoint.com/techniques/assembly.html#int3");
   }
-  if (interruptID == 0x2d) {
+  else if (interruptID == 0x2d) {
     LogAntiDbg(
         wType, Address, "INT2D",
         "https://anti-debug.checkpoint.com/techniques/assembly.html#int2d");
+  }
+  else if(interruptID >= 0 && interruptID <= 0xff){
+      LogMsgAtAddress(wType, Address, "", ("INT" + static_cast<std::stringstream&>(std::stringstream() << std::hex << interruptID).str()).c_str(), "");
   }
 }
 
@@ -281,6 +284,16 @@ VOID AntiDbg_LoadLibrary(const ADDRINT Address, const CHAR* name,
   // Convert from wide string for comparison
   std::string _argStr(argStr.begin(), argStr.end());
   loadedLib.push_back(_argStr);
+}
+
+std::vector<void*> UserVEHCallback;
+VOID AntiDbg_RtlAddVectoredExceptionHandler(const ADDRINT Address, const CHAR* name,
+    uint32_t argCount, VOID* arg1, VOID* arg2, VOID* arg3,
+    VOID* arg4, VOID* arg5) {
+    if(!argCount) return;
+    PinLocker locker;
+    LOG("RtlAddVectoredExceptionHandler Called \n");
+    UserVEHCallback.push_back(arg2);
 }
 
 size_t BlockInputOccurrences = 0;
@@ -669,6 +682,11 @@ VOID AntiDbg::MonitorAntiDbgFunctions(IMG Image) {
                              AntiDbgLogFuncOccurrence);
     AntiDbgAddCallbackBefore(Image, "NtSetInformationThread", 4,
                              AntiDbg_NtSetInformationThread);
+
+    AntiDbgAddCallbackBefore(Image, "RtlAddVectoredExceptionHandler", 2,
+        AntiDbg_RtlAddVectoredExceptionHandler);
+    
+
 
     ////////////////////////////////////
     // If AntiDebug level is Deep

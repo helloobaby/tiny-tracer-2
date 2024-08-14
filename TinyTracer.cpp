@@ -434,11 +434,13 @@ BOOL fetchInterruptID(const ADDRINT Address, int &intID)
             intID = 4; break;
         case 0xF1:
             intID = 1; break;
-        case 0xCD:
+        case 0xCD:  // 常规INT指令
         {
             intID = (unsigned int)copyBuf[1];
             break;
         }
+        default:
+            return false;
     }
     return TRUE;
 }
@@ -527,6 +529,7 @@ VOID SyscallCalled(THREADID tid, CONTEXT* ctxt, SYSCALL_STANDARD std, VOID* v)
     
     const ADDRINT syscallNum = PIN_GetSyscallNumber(ctxt, std);
     if (syscallNum == UNKNOWN_ADDR) return; //invalid
+    //std::cout << "syscallNum " << syscallNum << std::endl;
 
     std::string funcName = m_Settings.syscallsTable.getName(syscallNum);
 
@@ -758,6 +761,19 @@ VOID MonitorFunctionArgs(IMG Image, const WFuncInfo &funcInfo)
 
 VOID InstrumentInstruction(INS ins, VOID *v)
 {
+    //ADDRINT Address = INS_Address(ins);
+    //LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() +"\n");
+    //
+    if (INS_IsFarCall(ins)) {
+        LOG("Get FarCall\n");
+        return;
+    }
+
+    if (INS_IsFarJump(ins)) {
+        LOG("Get FarJump\n");
+        return;
+    }
+
     if (m_Settings.stopOffsets.size() > 0) {
         INS_InsertCall(
             ins,
@@ -798,28 +814,28 @@ VOID InstrumentInstruction(INS ins, VOID *v)
     }
 
     if (INS_IsRDTSC(ins)) {
-      if (m_Settings.traceRDTSC) {
-        INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)RdtscCalled, IARG_CONTEXT,
-                       IARG_END);
-      }
-        // 被pin拉起来的程序rdtsc之间的间距超级大,需要处理一下
-        INS_InsertCall(
-            ins, 
-            IPOINT_AFTER, (AFUNPTR)AlterRdtscValueEdx,
-            IARG_CONTEXT,
-            IARG_RETURN_REGS, 
-            REG_GDX,
-            IARG_END);
+        if (m_Settings.traceRDTSC) {
+            INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)RdtscCalled, IARG_CONTEXT,
+                IARG_END);
 
-        INS_InsertCall(ins, 
-            IPOINT_AFTER, (AFUNPTR)AlterRdtscValueEax,
-            IARG_CONTEXT,
-            IARG_RETURN_REGS,
-            REG_GAX,
-            IARG_END);
+            INS_InsertCall(
+                ins,
+                IPOINT_AFTER, (AFUNPTR)AlterRdtscValueEdx,
+                IARG_CONTEXT,
+                IARG_RETURN_REGS,
+                REG_GDX,
+                IARG_END);
+
+            INS_InsertCall(ins,
+                IPOINT_AFTER, (AFUNPTR)AlterRdtscValueEax,
+                IARG_CONTEXT,
+                IARG_RETURN_REGS,
+                REG_GAX,
+                IARG_END);
+        }
     }
 
-    if ((INS_IsControlFlow(ins) || INS_IsFarJump(ins))) {
+    if (INS_IsControlFlow(ins) || INS_IsFarJump(ins)) {
         BOOL isIndirect = INS_IsIndirectControlFlow(ins) && !INS_IsRet(ins);
         INS_InsertCall(
             ins,
@@ -839,39 +855,6 @@ VOID InstrumentInstruction(INS ins, VOID *v)
     // If AntiDebug level is Standard
     ////////////////////////////////////
     if (m_Settings.antidebug != ANTIDEBUG_DISABLED) {
-        if (INS_IsMemoryRead(ins)) {
-            // Insert the callback function before memory read instructions
-            INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(AntiDbg::WatchMemoryAccess),
-                IARG_MEMORYREAD_EA,   // Effective address for memory read
-                IARG_MEMORYREAD_SIZE, // Size of memory read
-                IARG_INST_PTR,        // Instruction address
-                IARG_END);
-        }
-
-#ifdef _WIN64
-        const char *POPF_MNEM = "popfq";
-#else
-        const char *POPF_MNEM = "popfd";
-#endif
-        if (util::isStrEqualI(INS_Mnemonic(ins), POPF_MNEM))
-        {
-            INS_InsertCall(
-                ins,
-                IPOINT_BEFORE, (AFUNPTR)AntiDbg::FlagsCheck,
-                IARG_CONTEXT,
-                IARG_THREAD_ID,
-                IARG_END
-            );
-
-            INS_InsertCall(
-                ins,
-                IPOINT_AFTER, (AFUNPTR)AntiDbg::FlagsCheck_after,
-                IARG_CONTEXT,
-                IARG_THREAD_ID,
-                IARG_INST_PTR,
-                IARG_END
-            );
-        }
 
         if (INS_IsInterrupt(ins)) {
             INS_InsertCall(
@@ -995,6 +978,7 @@ static void OnCtxChange(THREADID threadIndex,
 
 int main(int argc, char *argv[])
 {
+
     // Initialize PIN library. Print help message if -h(elp) is specified
     // in the command line or the command line is invalid 
 
@@ -1016,11 +1000,6 @@ int main(int argc, char *argv[])
     
     LOG("Get app_name " + app_name);
     pInfo.init(app_name);
-
-    const std::string iniFilename = KnobIniFile.ValueString();
-    if (!m_Settings.loadINI(iniFilename)) {
-        LOG("Unimplement ini setting\n");
-    }
 
     // select mode in which symbols should be initialized
     SYMBOL_INFO_MODE mode = EXPORT_SYMBOLS; // 如果要记录调用的操作系统的API的话,DEBUG符号没意义,导出符号就足够了
@@ -1087,6 +1066,219 @@ int main(int argc, char *argv[])
 
     clearFlags();
 
+    
+
+    {
+#define DECLSPEC_ALIGN(x)   __declspec(align(x))
+#define DECLSPEC_NOINITALL __declspec(no_init_all)
+        typedef struct DECLSPEC_ALIGN(16) _M128A {
+            unsigned __int64 Low;
+            __int64 High;
+        } M128A, * PM128A;
+        typedef struct DECLSPEC_ALIGN(16) DECLSPEC_NOINITALL _CONTEXT {
+
+            //
+            // Register parameter home addresses.
+            //
+            // N.B. These fields are for convience - they could be used to extend the
+            //      context record in the future.
+            //
+
+            unsigned __int64 P1Home;
+            unsigned __int64 P2Home;
+            unsigned __int64 P3Home;
+            unsigned __int64 P4Home;
+            unsigned __int64 P5Home;
+            unsigned __int64 P6Home;
+
+            //
+            // Control flags.
+            //
+
+            __int32 ContextFlags;
+            __int32 MxCsr;
+
+            //
+            // Segment Registers and processor flags.
+            //
+
+            short   SegCs;
+            short   SegDs;
+            short   SegEs;
+            short   SegFs;
+            short   SegGs;
+            short   SegSs;
+            unsigned int EFlags;
+
+            //
+            // Debug registers
+            //
+
+            unsigned __int64 Dr0;
+            unsigned __int64 Dr1;
+            unsigned __int64 Dr2;
+            unsigned __int64 Dr3;
+            unsigned __int64 Dr6;
+            unsigned __int64 Dr7;
+
+            //
+            // Integer registers.
+            //
+
+            unsigned __int64 Rax;
+            unsigned __int64 Rcx;
+            unsigned __int64 Rdx;
+            unsigned __int64 Rbx;
+            unsigned __int64 Rsp;
+            unsigned __int64 Rbp;
+            unsigned __int64 Rsi;
+            unsigned __int64 Rdi;
+            unsigned __int64 R8;
+            unsigned __int64 R9;
+            unsigned __int64 R10;
+            unsigned __int64 R11;
+            unsigned __int64 R12;
+            unsigned __int64 R13;
+            unsigned __int64 R14;
+            unsigned __int64 R15;
+
+            //
+            // Program counter.
+            //
+
+            unsigned __int64 Rip;
+
+            //
+            // Floating point state.
+            //
+
+            union {
+                struct {
+                    M128A Header[2];
+                    M128A Legacy[8];
+                    M128A Xmm0;
+                    M128A Xmm1;
+                    M128A Xmm2;
+                    M128A Xmm3;
+                    M128A Xmm4;
+                    M128A Xmm5;
+                    M128A Xmm6;
+                    M128A Xmm7;
+                    M128A Xmm8;
+                    M128A Xmm9;
+                    M128A Xmm10;
+                    M128A Xmm11;
+                    M128A Xmm12;
+                    M128A Xmm13;
+                    M128A Xmm14;
+                    M128A Xmm15;
+                } DUMMYSTRUCTNAME;
+            } DUMMYUNIONNAME;
+
+            //
+            // Vector registers.
+            //
+
+            M128A VectorRegister[26];
+            unsigned __int64 VectorControl;
+
+            //
+            // Special debug control registers.
+            //
+
+            unsigned __int64 DebugControl;
+            unsigned __int64 LastBranchToRip;
+            unsigned __int64 LastBranchFromRip;
+            unsigned __int64 LastExceptionToRip;
+            unsigned __int64 LastExceptionFromRip;
+    } MYCONTEXT, * PMYCONTEXT;
+
+#ifndef _WIN64
+        typedef struct _EXCEPTION_RECORD {
+            unsigned int    ExceptionCode;
+            unsigned int ExceptionFlags;
+            unsigned int ExceptionRecord;
+            unsigned int ExceptionAddress;
+            unsigned int NumberParameters;
+            unsigned int ExceptionInformation[15];
+        } EXCEPTION_RECORD, * PEXCEPTION_RECORD;
+#else
+        typedef struct _EXCEPTION_RECORD {
+            unsigned int    ExceptionCode;
+            unsigned int ExceptionFlags;
+            unsigned __int64 ExceptionRecord;
+            unsigned __int64 ExceptionAddress;
+            unsigned int NumberParameters;
+            unsigned int __unusedAlignment;
+            unsigned __int64 ExceptionInformation[15];
+        } EXCEPTION_RECORD, * PEXCEPTION_RECORD;
+#endif
+
+        typedef EXCEPTION_RECORD* PEXCEPTION_RECORD;
+        
+
+        //
+        // Typedef for pointer returned by exception_info()
+        //
+
+        typedef struct _EXCEPTION_POINTERS {
+            PEXCEPTION_RECORD ExceptionRecord;
+            PMYCONTEXT ContextRecord;
+        } EXCEPTION_POINTERS, * PEXCEPTION_POINTERS;
+
+        extern std::vector<void*> UserVEHCallback;
+        PinLocker Locker;
+        // 这里一般是捕获Pintool内部的异常
+        // 有些应用程序的异常好像也会走到这里
+        PIN_AddInternalExceptionHandler([](THREADID threadIndex, EXCEPTION_INFO* pExceptInfo,
+            PHYSICAL_CONTEXT* pPhysCtxt, VOID* v)->EXCEPT_HANDLING_RESULT {
+                EXCEPTION_CODE ExceptionCode = PIN_GetExceptionCode(pExceptInfo);
+
+                LOG("Exception In Pintool " + pExceptInfo->GetCodeAsString() + "\n");
+
+                LOG("UserVEHCallback Size " + std::to_string(UserVEHCallback.size()));
+                
+                for (auto ptr : UserVEHCallback) {
+                    using PVECTORED_EXCEPTION_HANDLER = int(*)(
+                        struct _EXCEPTION_POINTERS* ExceptionInfo
+                        );
+                    PVECTORED_EXCEPTION_HANDLER func = (PVECTORED_EXCEPTION_HANDLER)ptr; // 获得用户注册的VEH处理函数
+
+                    // 构造 EXCEPTION_POINTERS
+                    EXCEPTION_POINTERS EP;
+                    EXCEPTION_RECORD ER;
+                    
+                    if (pExceptInfo->IsWindowsSysException()) {
+                        ER.ExceptionCode = pExceptInfo->GetWindowsSysExceptionCode();
+                    }
+                    else if (ExceptionCode == EXCEPTCODE_DBG_SINGLE_STEP_TRAP) {
+                        ER.ExceptionCode = 0x80000004; // EXCEPTION_SINGLE_STEP
+                    }
+                    else if (ExceptionCode == EXCEPTCODE_ACCESS_WINDOWS_GUARD_PAGE) {
+                        ER.ExceptionCode = 0x80000001;
+                    }
+                    else {
+                        return EHR_CONTINUE_SEARCH; // 无法接管,到这里Pintool其实会Crash了
+                    }
+
+                    ER.ExceptionAddress = (ADDRINT)PIN_GetExceptionAddress(pExceptInfo);
+
+                    MYCONTEXT Context{};
+                    EP.ContextRecord = &Context;
+                    EP.ExceptionRecord = &ER;
+
+                    int Status = func(&EP);
+                    LOG("VEH Handle Status " + std::to_string(Status) + "\n");
+                    if (Status == -1)// EXCEPTION_CONTINUE_EXECUTION 
+                    {
+                        return EHR_HANDLED;
+                    }
+                }
+                LOG("Force Catch Exception\n");
+                return EHR_HANDLED; // 即使这里不Handle也Crash了
+            }
+        , NULL);
+    }
     std::cerr << "===============================================" << std::endl;
     std::cerr << "This application is instrumented by " << TOOL_NAME << " v." << VERSION << std::endl;
     std::cerr << "Tracing module: " << app_name << std::endl;
@@ -1097,6 +1289,9 @@ int main(int argc, char *argv[])
     std::cerr << "See file pintool.log" << " for develop logs" << std::endl;
     std::cerr << "===============================================" << std::endl;
 
+    PIN_AddFiniFunction([](INT32 code, VOID* v) {
+        LOG("Application Exit , Code " + std::to_string(code));
+        }, nullptr);
     // Start the program, never returns
     PIN_StartProgram();
     return 0;

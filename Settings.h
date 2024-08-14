@@ -55,7 +55,7 @@ protected:
 };
 
 //---
-
+ 
 class Settings {
 
 public:
@@ -64,16 +64,18 @@ public:
 
     Settings()  // 默认配置
         : followShellcode(SHELLC_FOLLOW_ANY),
-        traceRDTSC(false),  // 跟踪RDTSC指令
-        traceINT(false),    // 跟踪INT指令
         traceSYSCALL(true), // 跟踪SYSCALL
         logSectTrans(true), //
         logShelcTrans(true),//
-        shortLogging(true), // 
-        logIndirect(false), // 跟随同模块的一些函数调用
         hexdumpSize(8),     //
+
+
+        shortLogging(true), // 打印DLL名而不是路径
+        logIndirect(false), // 跟随同模块的一些函数调用,感觉没啥用
+        traceINT(false),    // 跟踪所有INT指令,太多了,开了没啥意义
+        traceRDTSC(false),  // 跟踪RDTSC指令,也可以设置间隔,感觉也没啥用
         antidebug(ANTIDEBUG_STANDARD), // 监控标准的反调试手段
-        antivm(true),      // 通过CPUID判断是否是检测HyperVisor的
+        antivm(false),      // 通过CPUID判断是否是检测HyperVisor的,这个好像接管的有问题,不要设为true
         useDebugSym(false)  // 默认使用导出表符号
     {
     }
