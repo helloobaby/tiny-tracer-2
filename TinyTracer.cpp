@@ -762,15 +762,15 @@ VOID MonitorFunctionArgs(IMG Image, const WFuncInfo &funcInfo)
 VOID InstrumentInstruction(INS ins, VOID *v)
 {
     ADDRINT Address = INS_Address(ins);
-    LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() +"\n");
+    //LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() +"\n");
     //
     if (INS_IsFarCall(ins)) {
-        LOG("Get FarCall\n");
+        //LOG("Get FarCall\n");
         return;
     }
 
     if (INS_IsFarJump(ins)) {
-        LOG("Get FarJump\n");
+        //LOG("Get FarJump\n");
         return;
     }
 
