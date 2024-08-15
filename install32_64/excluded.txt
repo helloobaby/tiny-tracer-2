@@ -1,4 +1,6 @@
 kernel32;GetProcessHeap
-kernelbase;^Fls.*
+kernel32;^Fls.*
 kernel32;GetLastError
 ntdll;.*CriticalSection.*
+ucrtbase;.*
+msvcrt;.*

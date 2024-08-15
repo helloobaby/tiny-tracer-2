@@ -763,16 +763,19 @@ VOID InstrumentInstruction(INS ins, VOID *v)
 {
     ADDRINT Address = INS_Address(ins);
     //LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() +"\n");
+
     //
+
+#ifndef _WIN64
     if (INS_IsFarCall(ins)) {
-        //LOG("Get FarCall\n");
         return;
     }
 
     if (INS_IsFarJump(ins)) {
-        //LOG("Get FarJump\n");
         return;
     }
+#endif // !_WIN64
+
 
     if (m_Settings.stopOffsets.size() > 0) {
         INS_InsertCall(
@@ -1086,7 +1089,7 @@ int main(int argc, char *argv[])
         PIN_AddSyscallEntryFunction(SyscallCalled, NULL);
     }
 
-    // Register context changes
+    // KiUserExceptionDispatcher etc.
     PIN_AddContextChangeFunction(OnCtxChange, NULL);
 
     clearFlags();
