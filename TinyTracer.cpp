@@ -761,8 +761,8 @@ VOID MonitorFunctionArgs(IMG Image, const WFuncInfo &funcInfo)
 
 VOID InstrumentInstruction(INS ins, VOID *v)
 {
-    //ADDRINT Address = INS_Address(ins);
-    //LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() +"\n");
+    ADDRINT Address = INS_Address(ins);
+    LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() +"\n");
     //
     if (INS_IsFarCall(ins)) {
         LOG("Get FarCall\n");
@@ -880,6 +880,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
                 IARG_END
             );
         }
+        
         if (INS_IsInterrupt(ins)) {
             INS_InsertCall(
                 ins,
@@ -1298,8 +1299,8 @@ int main(int argc, char *argv[])
                         return EHR_HANDLED;
                     }
                 }
-                LOG("Force Catch Exception\n");
-                return EHR_HANDLED; // 即使这里不Handle也Crash了
+                LOG("Application Has Unhandled Exception , May Crash\n");
+                return EHR_UNHANDLED; 
             }
         , NULL);
     }
