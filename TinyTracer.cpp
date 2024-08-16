@@ -1099,6 +1099,7 @@ int main(int argc, char *argv[])
     {
 #define DECLSPEC_ALIGN(x)   __declspec(align(x))
 #define DECLSPEC_NOINITALL __declspec(no_init_all)
+#ifdef _WIN64
         typedef struct DECLSPEC_ALIGN(16) _M128A {
             unsigned __int64 Low;
             __int64 High;
@@ -1220,6 +1221,106 @@ int main(int argc, char *argv[])
             unsigned __int64 LastExceptionToRip;
             unsigned __int64 LastExceptionFromRip;
     } MYCONTEXT, * PMYCONTEXT;
+#else
+typedef struct _FLOATING_SAVE_AREA {
+    unsigned int   ControlWord;
+    unsigned int   StatusWord;
+    unsigned int   TagWord;
+    unsigned int   ErrorOffset;
+    unsigned int   ErrorSelector;
+    unsigned int   DataOffset;
+    unsigned int   DataSelector;
+    unsigned char    RegisterArea[80];
+    unsigned int   Spare0;
+} FLOATING_SAVE_AREA;
+typedef struct DECLSPEC_NOINITALL _CONTEXT {
+    
+    //
+    // The flags values within this flag control the contents of
+    // a CONTEXT record.
+    //
+    // If the context record is used as an input parameter, then
+    // for each portion of the context record controlled by a flag
+    // whose value is set, it is assumed that that portion of the
+    // context record contains valid context. If the context record
+    // is being used to modify a threads context, then only that
+    // portion of the threads context will be modified.
+    //
+    // If the context record is used as an IN OUT parameter to capture
+    // the context of a thread, then only those portions of the thread's
+    // context corresponding to set flags will be returned.
+    //
+    // The context record is never used as an OUT only parameter.
+    //
+
+    unsigned int ContextFlags;
+
+    //
+    // This section is specified/returned if CONTEXT_DEBUG_REGISTERS is
+    // set in ContextFlags.  Note that CONTEXT_DEBUG_REGISTERS is NOT
+    // included in CONTEXT_FULL.
+    //
+
+    unsigned int   Dr0;
+    unsigned int   Dr1;
+    unsigned int   Dr2;
+    unsigned int   Dr3;
+    unsigned int   Dr6;
+    unsigned int   Dr7;
+
+    //
+    // This section is specified/returned if the
+    // ContextFlags word contians the flag CONTEXT_FLOATING_POINT.
+    //
+
+    FLOATING_SAVE_AREA FloatSave;
+
+    //
+    // This section is specified/returned if the
+    // ContextFlags word contians the flag CONTEXT_SEGMENTS.
+    //
+
+    unsigned int   SegGs;
+    unsigned int   SegFs;
+    unsigned int   SegEs;
+    unsigned int   SegDs;
+
+    //
+    // This section is specified/returned if the
+    // ContextFlags word contians the flag CONTEXT_INTEGER.
+    //
+
+    unsigned int   Edi;
+    unsigned int   Esi;
+    unsigned int   Ebx;
+    unsigned int   Edx;
+    unsigned int   Ecx;
+    unsigned int   Eax;
+
+    //
+    // This section is specified/returned if the
+    // ContextFlags word contians the flag CONTEXT_CONTROL.
+    //
+
+    unsigned int   Ebp;
+    unsigned int   Eip;
+    unsigned int   SegCs;              // MUST BE SANITIZED
+    unsigned int   EFlags;             // MUST BE SANITIZED
+    unsigned int   Esp;
+    unsigned int   SegSs;
+
+    //
+    // This section is specified/returned if the ContextFlags word
+    // contains the flag CONTEXT_EXTENDED_REGISTERS.
+    // The format and contexts are processor specific
+    //
+
+    unsigned char    ExtendedRegisters[512];
+
+} MYCONTEXT;
+
+typedef MYCONTEXT* PMYCONTEXT;
+#endif
 
 #ifndef _WIN64
         typedef struct _EXCEPTION_RECORD {
