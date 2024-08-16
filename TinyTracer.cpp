@@ -781,7 +781,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
         INS_InsertCall(
             ins,
             IPOINT_BEFORE, (AFUNPTR)PauseAtOffset,
-            IARG_CONTEXT,
+            IARG_CONST_CONTEXT,
             IARG_END
         );
     }
@@ -789,7 +789,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
         INS_InsertCall(
             ins,
             IPOINT_BEFORE, (AFUNPTR)CpuidCalled,
-            IARG_CONTEXT,
+            IARG_CONST_CONTEXT,
             IARG_END
         );
 #ifdef USE_ANTIVM
@@ -798,7 +798,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
             INS_InsertCall(
                 ins,
                 IPOINT_BEFORE, (AFUNPTR)AntiVm::CpuidCheck,
-                IARG_CONTEXT,
+                IARG_CONST_CONTEXT,
                 IARG_END
             );
         }
@@ -810,7 +810,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
             INS_InsertCall(
                 ins,
                 IPOINT_BEFORE, (AFUNPTR)InterruptCalled,
-                IARG_CONTEXT,
+                IARG_CONST_CONTEXT,
                 IARG_END
             );
         }
@@ -818,20 +818,20 @@ VOID InstrumentInstruction(INS ins, VOID *v)
 
     if (INS_IsRDTSC(ins)) {
         if (m_Settings.traceRDTSC) {
-            INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)RdtscCalled, IARG_CONTEXT,
+            INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)RdtscCalled, IARG_CONST_CONTEXT,
                 IARG_END);
 
             INS_InsertCall(
                 ins,
                 IPOINT_AFTER, (AFUNPTR)AlterRdtscValueEdx,
-                IARG_CONTEXT,
+                IARG_CONST_CONTEXT,
                 IARG_RETURN_REGS,
                 REG_GDX,
                 IARG_END);
 
             INS_InsertCall(ins,
                 IPOINT_AFTER, (AFUNPTR)AlterRdtscValueEax,
-                IARG_CONTEXT,
+                IARG_CONST_CONTEXT,
                 IARG_RETURN_REGS,
                 REG_GAX,
                 IARG_END);
@@ -846,7 +846,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
             IARG_INST_PTR,
             IARG_BRANCH_TARGET_ADDR,
             IARG_BOOL, isIndirect,
-            IARG_CONTEXT,
+            IARG_CONST_CONTEXT,
             IARG_END
         );
 
@@ -869,7 +869,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
             INS_InsertCall(
                 ins,
                 IPOINT_BEFORE, (AFUNPTR)AntiDbg::FlagsCheck,
-                IARG_CONTEXT,
+                IARG_CONST_CONTEXT,
                 IARG_THREAD_ID,
                 IARG_END
             );
@@ -877,7 +877,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
             INS_InsertCall(
                 ins,
                 IPOINT_AFTER, (AFUNPTR)AntiDbg::FlagsCheck_after,
-                IARG_CONTEXT,
+                IARG_CONST_CONTEXT,
                 IARG_THREAD_ID,
                 IARG_INST_PTR,
                 IARG_END
@@ -888,7 +888,7 @@ VOID InstrumentInstruction(INS ins, VOID *v)
             INS_InsertCall(
                 ins,
                 IPOINT_BEFORE, (AFUNPTR)AntiDbg::InterruptCheck,
-                IARG_CONTEXT,
+                IARG_CONST_CONTEXT,
                 IARG_END
             );
         }
