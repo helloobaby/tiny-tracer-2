@@ -1440,7 +1440,7 @@ int main(int argc, char* argv[])
                         return "CONTEXT_CHANGE_REASON_CALLBACK";
                     }
                     };
-                LOG("ContextChange Exception " + TranslateReasonToString(reason)+"\n");
+                LOG("ContextChange reason " + TranslateReasonToString(reason)+"\n");
 
 
                 if (reason != CONTEXT_CHANGE_REASON_EXCEPTION) { // If the caught exception is not a Windows exception, return.
