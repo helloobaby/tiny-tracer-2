@@ -12,5 +12,5 @@ VOID WatchCompareSoftBrk(ADDRINT Address, UINT64 immVal);
 VOID MonitorAntiDbgFunctions(IMG Image);
 VOID FlagsCheck(const CONTEXT* ctxt, THREADID tid);
 VOID FlagsCheck_after(const CONTEXT* ctxt, THREADID tid, ADDRINT eip);
-VOID InterruptCheck(const CONTEXT* ctxt);
+VOID InterruptCheck(CONTEXT* ctxt);
 };  // namespace AntiDbg

@@ -138,10 +138,6 @@ bool fillSettings(Settings &s, std::string line)
         s.hexdumpSize = util::loadInt(valStr);
         isFilled = true;
     }
-    if (util::iequals(valName, LOG_INDIRECT)) {
-        s.logIndirect = loadBoolean(valStr, s.logIndirect);
-        isFilled = true;
-    }
     if (util::iequals(valName, HOOK_SLEEP)) {
         s.hookSleep = loadBoolean(valStr, s.hookSleep);
         isFilled = true;
@@ -212,7 +208,6 @@ bool Settings::saveINI(const std::string &filename)
 
     myfile << HOOK_SLEEP << DELIM << this->hookSleep << "\r\n";
     myfile << SLEEP_TIME << DELIM << this->sleepTime << "\r\n";
-    myfile << LOG_INDIRECT << DELIM << this->logIndirect << "\r\n";
     myfile << KEY_ANTIDEBUG << DELIM << this->antidebug << "\r\n";
     myfile << KEY_ANTIVM << DELIM << this->antivm << "\r\n";
     myfile.close();

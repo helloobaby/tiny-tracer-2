@@ -45,13 +45,13 @@ std::string get_func_at(ADDRINT callAddr)
     }
     std::string name = get_unmangled_name(rtn);
     ADDRINT rtnAddr = RTN_Address(rtn);
-    if (rtnAddr == callAddr) {
+    if (rtnAddr == callAddr) {   // 函数开头
         return name;
     }
     // it doesn't start at the beginning of the routine
     const ADDRINT diff = callAddr - rtnAddr;
     std::ostringstream sstr;
-    sstr << "[" << name << "+" << std::hex << diff << "]*";
+    sstr << "[" << name << "+" << std::hex << diff << "]*";  // 函数中间
     return sstr.str();
 }
 

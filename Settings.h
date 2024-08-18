@@ -71,7 +71,6 @@ public:
 
 
         shortLogging(true), // 打印DLL名而不是路径
-        logIndirect(false), // 跟随同模块的一些函数调用,感觉没啥用
         traceINT(false),    // 跟踪所有INT指令,太多了,开了没啥意义
         traceRDTSC(false),  // 跟踪RDTSC指令,也可以设置间隔,感觉也没啥用
         antidebug(ANTIDEBUG_STANDARD), // 监控标准的反调试手段
@@ -91,7 +90,6 @@ public:
     bool logSectTrans; // watch transitions between sections
     bool logShelcTrans; // watch transitions between shellcodes
     bool shortLogging; // Use short call logging (without a full DLL path)
-    bool logIndirect;
     size_t hexdumpSize;
     bool hookSleep;
     size_t sleepTime;

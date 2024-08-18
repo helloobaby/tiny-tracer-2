@@ -5,3 +5,5 @@ advapi32;RegQueryValueW;3
 kernel32;CreateFileW;6
 kernel32;LoadLibraryExW;1
 Kernel32;CreateProcessW;2
+Kernel32;CloseHandle;1
+ntdll;NtClose;1

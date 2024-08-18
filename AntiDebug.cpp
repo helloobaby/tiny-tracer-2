@@ -218,9 +218,9 @@ VOID AntiDbg::FlagsCheck_after(const CONTEXT* ctxt, THREADID tid, ADDRINT eip) {
   PIN_RaiseException(ctxt, tid, &exc);
 }
 
-VOID AntiDbg::InterruptCheck(const CONTEXT* ctxt) {
-    int interruptID = -1;
-    const ADDRINT Address = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
+VOID AntiDbg::InterruptCheck(CONTEXT* ctxt) {
+    int interruptID = 0xDEADC0DE;
+    const ADDRINT Address = PIN_GetContextReg(ctxt, REG_INST_PTR);
     {
         PinLocker locker;
         const WatchedType wType = isWatchedAddress(Address);
@@ -253,6 +253,15 @@ VOID AntiDbg::InterruptCheck(const CONTEXT* ctxt) {
             LogMsgAtAddress(wType, Address, "", ("INT" + static_cast<std::stringstream&>(std::stringstream() << std::hex << interruptID).str()).c_str(), "");
         }
     }
+
+    // https://github.com/dcdelia/WhiteRabbitTracker/blob/f19ceb4b1839aaa20296ba4fc43d792873cb080e/pintool/src/main.cpp#L130
+    if (interruptID == 0x2D) {
+        EXCEPTION_INFO exc;
+        PIN_InitWindowsExceptionInfo(&exc, 0x80000003, Address + 0x3);
+        PIN_SetContextReg(ctxt, REG_INST_PTR, Address + 0x3); // advance EIP
+        PIN_RaiseException(ctxt, PIN_ThreadId(), &exc);
+    }
+
 }
 
 /* ==================================================================== */
@@ -291,16 +300,6 @@ VOID AntiDbg_LoadLibrary(const ADDRINT Address, const CHAR* name,
   // Convert from wide string for comparison
   std::string _argStr(argStr.begin(), argStr.end());
   loadedLib.push_back(_argStr);
-}
-
-std::vector<void*> UserVEHCallback;
-VOID AntiDbg_RtlAddVectoredExceptionHandler(const ADDRINT Address, const CHAR* name,
-    uint32_t argCount, VOID* arg1, VOID* arg2, VOID* arg3,
-    VOID* arg4, VOID* arg5) {
-    if(!argCount) return;
-    PinLocker locker;
-    LOG("RtlAddVectoredExceptionHandler Called \n");
-    UserVEHCallback.push_back(arg2);
 }
 
 size_t BlockInputOccurrences = 0;
@@ -689,9 +688,6 @@ VOID AntiDbg::MonitorAntiDbgFunctions(IMG Image) {
                              AntiDbgLogFuncOccurrence);
     AntiDbgAddCallbackBefore(Image, "NtSetInformationThread", 4,
                              AntiDbg_NtSetInformationThread);
-
-    AntiDbgAddCallbackBefore(Image, "RtlAddVectoredExceptionHandler", 2,
-        AntiDbg_RtlAddVectoredExceptionHandler);
     
 
 

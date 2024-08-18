@@ -83,6 +83,7 @@ KNOB<std::string> KnobStopOffsets(KNOB_MODE_WRITEONCE, "pintool",
 
 /* ===================================================================== */
 // Utilities
+
 /* ===================================================================== */
 
 VOID _LogFunctionArgs(const ADDRINT Address, const CHAR* name, uint32_t argCount, VOID* arg1, VOID* arg2, VOID* arg3, VOID* arg4, VOID* arg5, VOID* arg6, VOID* arg7, VOID* arg8, VOID* arg9, VOID* arg10, VOID* arg11);
@@ -102,6 +103,59 @@ INT32 Usage()
 
 /* ===================================================================== */
 // Analysis utilities
+VOID Log(BOOL now, const char* fmt ,...)
+{
+    va_list argptr;
+    va_start(argptr, fmt);
+    char inBuffer[0x1000];
+    sprintf_s(inBuffer, 0x1000,fmt, argptr);
+    va_end(argptr);
+    LOG(inBuffer);
+}
+#if _WIN64
+VOID printContext(const CONTEXT* ctx, UINT32 c)
+{
+    Log(TRUE, "\nRAX = %p\tRBX = %p\tRCX = %p\nRDX = %p\tRSI = %p\tRDI = %p\nRBP = %p\tRSP = %p\tRIP = %p\n",
+        PIN_GetContextReg(ctx, REG_RAX),
+        PIN_GetContextReg(ctx, REG_RBX),
+        PIN_GetContextReg(ctx, REG_RCX),
+        PIN_GetContextReg(ctx, REG_RDX),
+        PIN_GetContextReg(ctx, REG_RSI),
+        PIN_GetContextReg(ctx, REG_RDI),
+        PIN_GetContextReg(ctx, REG_RBP),
+        PIN_GetContextReg(ctx, REG_RSP),
+        PIN_GetContextReg(ctx, REG_RIP));
+    // TODO: use the safe copy API
+    UINT count = ((c == -1) ? ((PIN_GetContextReg(ctx, REG_RBP)-PIN_GetContextReg(ctx, REG_RSP))/sizeof(ADDRINT))+1 : c);
+    ADDRINT *ptr = (ADDRINT*)PIN_GetContextReg(ctx, REG_RSP);
+    for (UINT32 i = 0; i < count; i++) {
+    	Log(TRUE, "[%08x]: %08x\n", ptr, *ptr);
+    	ptr++;
+    }
+}
+#else
+VOID printContext(const CONTEXT* ctx, UINT32 c)
+{
+    Log(TRUE, "\nEAX = %08x\tEBX = %08x\tECX = %08x\nEDX = %08x\tESI = %08x\tEDI = %08x\nEBP = %08x\tESP = %08x\tEIP = %08x\n",
+        PIN_GetContextReg(ctx, REG_EAX),
+        PIN_GetContextReg(ctx, REG_EBX),
+        PIN_GetContextReg(ctx, REG_ECX),
+        PIN_GetContextReg(ctx, REG_EDX),
+        PIN_GetContextReg(ctx, REG_ESI),
+        PIN_GetContextReg(ctx, REG_EDI),
+        PIN_GetContextReg(ctx, REG_EBP),
+        PIN_GetContextReg(ctx, REG_ESP),
+        PIN_GetContextReg(ctx, REG_EIP));
+    // TODO: use the safe copy API
+    UINT count = ((c == -1) ? ((PIN_GetContextReg(ctx, REG_EBP) - PIN_GetContextReg(ctx, REG_ESP)) / sizeof(VOID*)) + 1 : c);
+    ADDRINT* ptr = (ADDRINT*)PIN_GetContextReg(ctx, REG_ESP);
+    for (UINT32 i = 0; i < count; i++) {
+        Log(TRUE, "[%08x]: %08x\n", ptr, *ptr);
+        ptr++;
+    }
+}
+
+#endif
 /* ===================================================================== */
 
 BOOL isInTracedShellc(const ADDRINT addr)
@@ -148,14 +202,27 @@ WatchedType isWatchedAddress(const ADDRINT Address)
 inline ADDRINT getReturnFromTheStack(const CONTEXT* ctx)
 {
     if (!ctx) return UNKNOWN_ADDR;
-
     ADDRINT retAddr = UNKNOWN_ADDR;
     const ADDRINT* stackPtr = reinterpret_cast<ADDRINT*>(PIN_GetContextReg(ctx, REG_STACK_PTR));
     size_t copiedSize = PIN_SafeCopy(&retAddr, stackPtr, sizeof(retAddr));
     if (copiedSize != sizeof(retAddr)) {
+        LOG("getReturnFromTheStack fail\n");
         return UNKNOWN_ADDR;
     }
     return retAddr;
+}
+
+inline VOID setReturnFromTheStack(const CONTEXT* ctx,ADDRINT AddrTo) {
+    if (!ctx) return;
+    const ADDRINT* stackPtr = reinterpret_cast<ADDRINT*>(PIN_GetContextReg(ctx, REG_STACK_PTR));
+    size_t copiedSize = PIN_SafeCopy((void*)stackPtr, &AddrTo, sizeof(AddrTo));
+    if (copiedSize != sizeof(AddrTo)) {
+        // TODO : BUG Report
+        LOG("setReturnFromTheStack fail\n");
+        return;
+    }
+
+    return;
 }
 
 VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndirect, const CONTEXT* ctx = NULL)
@@ -190,6 +257,7 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
         else {
             //not in any of the mapped modules:
             const ADDRINT pageTo = query_region_base(addrTo);
+
             m_tracedShellc.insert(pageTo); //save the beginning of this area
             traceLog.logCall(0, RvaFrom, pageTo, addrTo);
         }
@@ -254,20 +322,6 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
             traceLog.logCallRet(base, RvaFrom, pageRet, returnAddr, dll_name, func);
         }
     }
-    /**
-    trace indirect calls to your own functions
-    */
-    if (fromWType == WatchedType::WATCHED_MY_MODULE
-        && isTargetMy && m_Settings.logIndirect && isIndirect)
-    {
-        const ADDRINT baseTo = get_base(addrTo);
-        ADDRINT base = get_base(addrFrom);
-        if (base != UNKNOWN_ADDR && baseTo != UNKNOWN_ADDR) {
-            const ADDRINT RvaFrom = addrFrom - base;
-            const ADDRINT calledRVA = addrTo - baseTo;
-            traceLog.logIndirectCall(0, RvaFrom, true, baseTo, calledRVA);
-        }
-    }
 
     /**
     trace transitions between the sections of the traced module:
@@ -292,7 +346,7 @@ VOID _SaveTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, BOOL isIndir
     }
 }
 
-VOID SaveTransitions(const ADDRINT prevVA, const ADDRINT Address, BOOL isIndirect, const CONTEXT* ctx)
+VOID SaveTransitions(const ADDRINT prevVA, const ADDRINT Address, BOOL isIndirect, const CONTEXT* ctx = NULL)
 {
     PinLocker locker;
     _SaveTransitions(prevVA, Address, isIndirect, ctx);
@@ -758,12 +812,12 @@ VOID MonitorFunctionArgs(IMG Image, const WFuncInfo &funcInfo)
 /* ===================================================================== */
 // Instrumentation callbacks
 /* ===================================================================== */
-
 VOID InstrumentInstruction(INS ins, VOID *v)
 {
     ADDRINT Address = INS_Address(ins);
-    //LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() +"\n");
-
+    
+    // Debug , Very poor performance
+    //LOG("Trace " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << Address).str() + " " + INS_Disassemble(ins) + "\n");
     //
 
 #ifndef _WIN64
@@ -839,12 +893,12 @@ VOID InstrumentInstruction(INS ins, VOID *v)
     }
 
     if (INS_IsControlFlow(ins) || INS_IsFarJump(ins)) {
-        BOOL isIndirect = INS_IsIndirectControlFlow(ins) && !INS_IsRet(ins);
+        const BOOL isIndirect = INS_IsRet(ins);
         INS_InsertCall(
             ins,
             IPOINT_BEFORE, (AFUNPTR)SaveTransitions,
-            IARG_INST_PTR,
-            IARG_BRANCH_TARGET_ADDR,
+            IARG_INST_PTR, // AddrFrom 
+            IARG_BRANCH_TARGET_ADDR, // AddrTo
             IARG_BOOL, isIndirect,
             IARG_CONST_CONTEXT,
             IARG_END
@@ -884,11 +938,11 @@ VOID InstrumentInstruction(INS ins, VOID *v)
             );
         }
         
-        if (INS_IsInterrupt(ins)) {
+        if (INS_IsInterrupt(ins)) { // INS_IsValidForIpointAfter 一般都是return false,也就是Interrupt不能IPOINT_AFTER
             INS_InsertCall(
                 ins,
                 IPOINT_BEFORE, (AFUNPTR)AntiDbg::InterruptCheck,
-                IARG_CONST_CONTEXT,
+                IARG_CONTEXT,
                 IARG_END
             );
         }
@@ -993,6 +1047,7 @@ static void OnCtxChange(THREADID threadIndex,
 
     const ADDRINT addrFrom = (ADDRINT)PIN_GetContextReg(ctxtFrom, REG_INST_PTR);
     const ADDRINT addrTo = (ADDRINT)PIN_GetContextReg(ctxtTo, REG_INST_PTR);
+    //std::cout << "Get Exception In Application " << "addrFrom " << std::hex << addrFrom << " " << "addrTo " << addrTo << std::endl;
     _SaveTransitions(addrFrom, addrTo, FALSE);
 }
 
@@ -1003,16 +1058,16 @@ static void OnCtxChange(THREADID threadIndex,
 * @param[in]   argv            array of command line arguments,
 *                              including pin -t <toolname> -- ...
 */
-
-int main(int argc, char *argv[])
+time_t tTraceStart;
+int main(int argc, char* argv[])
 {
-
+    time(&tTraceStart);
     // Initialize PIN library. Print help message if -h(elp) is specified
     // in the command line or the command line is invalid 
 
     if (PIN_Init(argc, argv))
     {
-        return Usage(); 
+        return Usage();
     }
 
     std::string app_name = KnobModuleName.Value();
@@ -1025,8 +1080,8 @@ int main(int argc, char *argv[])
             }
         }
     }
-    
-    LOG("Get app_name " + app_name);
+
+    LOG("Get app_name " + app_name + "\n");
     pInfo.init(app_name);
 
     // select mode in which symbols should be initialized
@@ -1048,7 +1103,7 @@ int main(int argc, char *argv[])
         std::string excludedList = KnobExcludedListFile.ValueString(); // 命令行参数-x指定 一般是excluded.txt
         if (excludedList.length()) {
             m_Settings.excludedFuncs.loadList(excludedList.c_str());
-            LOG( "Excluded " + std::to_string(m_Settings.excludedFuncs.funcs.size()) + " functions\n");
+            LOG("Excluded " + std::to_string(m_Settings.excludedFuncs.funcs.size()) + " functions\n");
         }
     }
 
@@ -1086,7 +1141,7 @@ int main(int argc, char *argv[])
     if (m_Settings.traceSYSCALL) {
         // Register function to be called before every syscall instruction
         // (i.e., syscall, sysenter, int 2Eh)
-        PIN_AddSyscallEntryFunction(SyscallCalled, NULL);
+        //PIN_AddSyscallEntryFunction(SyscallCalled, NULL);
     }
 
     // KiUserExceptionDispatcher etc.
@@ -1094,7 +1149,7 @@ int main(int argc, char *argv[])
 
     clearFlags();
 
-    
+
 
     {
 #define DECLSPEC_ALIGN(x)   __declspec(align(x))
@@ -1220,106 +1275,106 @@ int main(int argc, char *argv[])
             unsigned __int64 LastBranchFromRip;
             unsigned __int64 LastExceptionToRip;
             unsigned __int64 LastExceptionFromRip;
-    } MYCONTEXT, * PMYCONTEXT;
+        } MYCONTEXT, * PMYCONTEXT;
 #else
-typedef struct _FLOATING_SAVE_AREA {
-    unsigned int   ControlWord;
-    unsigned int   StatusWord;
-    unsigned int   TagWord;
-    unsigned int   ErrorOffset;
-    unsigned int   ErrorSelector;
-    unsigned int   DataOffset;
-    unsigned int   DataSelector;
-    unsigned char    RegisterArea[80];
-    unsigned int   Spare0;
-} FLOATING_SAVE_AREA;
-typedef struct DECLSPEC_NOINITALL _CONTEXT {
-    
-    //
-    // The flags values within this flag control the contents of
-    // a CONTEXT record.
-    //
-    // If the context record is used as an input parameter, then
-    // for each portion of the context record controlled by a flag
-    // whose value is set, it is assumed that that portion of the
-    // context record contains valid context. If the context record
-    // is being used to modify a threads context, then only that
-    // portion of the threads context will be modified.
-    //
-    // If the context record is used as an IN OUT parameter to capture
-    // the context of a thread, then only those portions of the thread's
-    // context corresponding to set flags will be returned.
-    //
-    // The context record is never used as an OUT only parameter.
-    //
+        typedef struct _FLOATING_SAVE_AREA {
+            unsigned int   ControlWord;
+            unsigned int   StatusWord;
+            unsigned int   TagWord;
+            unsigned int   ErrorOffset;
+            unsigned int   ErrorSelector;
+            unsigned int   DataOffset;
+            unsigned int   DataSelector;
+            unsigned char    RegisterArea[80];
+            unsigned int   Spare0;
+        } FLOATING_SAVE_AREA;
+        typedef struct DECLSPEC_NOINITALL _CONTEXT {
 
-    unsigned int ContextFlags;
+            //
+            // The flags values within this flag control the contents of
+            // a CONTEXT record.
+            //
+            // If the context record is used as an input parameter, then
+            // for each portion of the context record controlled by a flag
+            // whose value is set, it is assumed that that portion of the
+            // context record contains valid context. If the context record
+            // is being used to modify a threads context, then only that
+            // portion of the threads context will be modified.
+            //
+            // If the context record is used as an IN OUT parameter to capture
+            // the context of a thread, then only those portions of the thread's
+            // context corresponding to set flags will be returned.
+            //
+            // The context record is never used as an OUT only parameter.
+            //
 
-    //
-    // This section is specified/returned if CONTEXT_DEBUG_REGISTERS is
-    // set in ContextFlags.  Note that CONTEXT_DEBUG_REGISTERS is NOT
-    // included in CONTEXT_FULL.
-    //
+            unsigned int ContextFlags;
 
-    unsigned int   Dr0;
-    unsigned int   Dr1;
-    unsigned int   Dr2;
-    unsigned int   Dr3;
-    unsigned int   Dr6;
-    unsigned int   Dr7;
+            //
+            // This section is specified/returned if CONTEXT_DEBUG_REGISTERS is
+            // set in ContextFlags.  Note that CONTEXT_DEBUG_REGISTERS is NOT
+            // included in CONTEXT_FULL.
+            //
 
-    //
-    // This section is specified/returned if the
-    // ContextFlags word contians the flag CONTEXT_FLOATING_POINT.
-    //
+            unsigned int   Dr0;
+            unsigned int   Dr1;
+            unsigned int   Dr2;
+            unsigned int   Dr3;
+            unsigned int   Dr6;
+            unsigned int   Dr7;
 
-    FLOATING_SAVE_AREA FloatSave;
+            //
+            // This section is specified/returned if the
+            // ContextFlags word contians the flag CONTEXT_FLOATING_POINT.
+            //
 
-    //
-    // This section is specified/returned if the
-    // ContextFlags word contians the flag CONTEXT_SEGMENTS.
-    //
+            FLOATING_SAVE_AREA FloatSave;
 
-    unsigned int   SegGs;
-    unsigned int   SegFs;
-    unsigned int   SegEs;
-    unsigned int   SegDs;
+            //
+            // This section is specified/returned if the
+            // ContextFlags word contians the flag CONTEXT_SEGMENTS.
+            //
 
-    //
-    // This section is specified/returned if the
-    // ContextFlags word contians the flag CONTEXT_INTEGER.
-    //
+            unsigned int   SegGs;
+            unsigned int   SegFs;
+            unsigned int   SegEs;
+            unsigned int   SegDs;
 
-    unsigned int   Edi;
-    unsigned int   Esi;
-    unsigned int   Ebx;
-    unsigned int   Edx;
-    unsigned int   Ecx;
-    unsigned int   Eax;
+            //
+            // This section is specified/returned if the
+            // ContextFlags word contians the flag CONTEXT_INTEGER.
+            //
 
-    //
-    // This section is specified/returned if the
-    // ContextFlags word contians the flag CONTEXT_CONTROL.
-    //
+            unsigned int   Edi;
+            unsigned int   Esi;
+            unsigned int   Ebx;
+            unsigned int   Edx;
+            unsigned int   Ecx;
+            unsigned int   Eax;
 
-    unsigned int   Ebp;
-    unsigned int   Eip;
-    unsigned int   SegCs;              // MUST BE SANITIZED
-    unsigned int   EFlags;             // MUST BE SANITIZED
-    unsigned int   Esp;
-    unsigned int   SegSs;
+            //
+            // This section is specified/returned if the
+            // ContextFlags word contians the flag CONTEXT_CONTROL.
+            //
 
-    //
-    // This section is specified/returned if the ContextFlags word
-    // contains the flag CONTEXT_EXTENDED_REGISTERS.
-    // The format and contexts are processor specific
-    //
+            unsigned int   Ebp;
+            unsigned int   Eip;
+            unsigned int   SegCs;              // MUST BE SANITIZED
+            unsigned int   EFlags;             // MUST BE SANITIZED
+            unsigned int   Esp;
+            unsigned int   SegSs;
 
-    unsigned char    ExtendedRegisters[512];
+            //
+            // This section is specified/returned if the ContextFlags word
+            // contains the flag CONTEXT_EXTENDED_REGISTERS.
+            // The format and contexts are processor specific
+            //
 
-} MYCONTEXT;
+            unsigned char    ExtendedRegisters[512];
 
-typedef MYCONTEXT* PMYCONTEXT;
+        } MYCONTEXT;
+
+        typedef MYCONTEXT* PMYCONTEXT;
 #endif
 
 #ifndef _WIN64
@@ -1344,7 +1399,7 @@ typedef MYCONTEXT* PMYCONTEXT;
 #endif
 
         typedef EXCEPTION_RECORD* PEXCEPTION_RECORD;
-        
+
 
         //
         // Typedef for pointer returned by exception_info()
@@ -1355,58 +1410,60 @@ typedef MYCONTEXT* PMYCONTEXT;
             PMYCONTEXT ContextRecord;
         } EXCEPTION_POINTERS, * PEXCEPTION_POINTERS;
 
-        extern std::vector<void*> UserVEHCallback;
         PinLocker Locker;
         // 这里一般是捕获Pintool内部的异常
-        // 有些应用程序的异常好像也会走到这里
+        LOG("Register InternalExceptionHandler\n");
         PIN_AddInternalExceptionHandler([](THREADID threadIndex, EXCEPTION_INFO* pExceptInfo,
             PHYSICAL_CONTEXT* pPhysCtxt, VOID* v)->EXCEPT_HANDLING_RESULT {
                 EXCEPTION_CODE ExceptionCode = PIN_GetExceptionCode(pExceptInfo);
-
                 LOG("Exception In Pintool " + pExceptInfo->GetCodeAsString() + "\n");
+                return EHR_UNHANDLED;
+            }, 0);
+        LOG("Register ContextChangeFunction\n");
 
-                LOG("UserVEHCallback Size " + std::to_string(UserVEHCallback.size()));
-                
-                for (auto ptr : UserVEHCallback) {
-                    using PVECTORED_EXCEPTION_HANDLER = int(*)(
-                        struct _EXCEPTION_POINTERS* ExceptionInfo
-                        );
-                    PVECTORED_EXCEPTION_HANDLER func = (PVECTORED_EXCEPTION_HANDLER)ptr; // 获得用户注册的VEH处理函数
+        // 接管应用程序的异常
+        PIN_AddContextChangeFunction([](THREADID threadIndex, CONTEXT_CHANGE_REASON reason, const CONTEXT* from, CONTEXT* to, INT32 info, VOID* v)
+            {
+                auto TranslateReasonToString = [=](CONTEXT_CHANGE_REASON reason)->std::string {
+                    switch (reason) {
+                    case CONTEXT_CHANGE_REASON_FATALSIGNAL:
+                        return "CONTEXT_CHANGE_REASON_FATALSIGNAL";
+                    case CONTEXT_CHANGE_REASON_SIGNAL:
+                        return "CONTEXT_CHANGE_REASON_SIGNAL";
+                    case CONTEXT_CHANGE_REASON_SIGRETURN:
+                        return "CONTEXT_CHANGE_REASON_SIGRETURN";
+                    case CONTEXT_CHANGE_REASON_APC:
+                        return "CONTEXT_CHANGE_REASON_APC";
+                    case CONTEXT_CHANGE_REASON_EXCEPTION:
+                        return "CONTEXT_CHANGE_REASON_EXCEPTION";
+                    case CONTEXT_CHANGE_REASON_CALLBACK:
+                        return "CONTEXT_CHANGE_REASON_CALLBACK";
+                    }
+                    };
+                LOG("ContextChange Exception " + TranslateReasonToString(reason)+"\n");
 
-                    // 构造 EXCEPTION_POINTERS
-                    EXCEPTION_POINTERS EP;
-                    EXCEPTION_RECORD ER;
-                    
-                    if (pExceptInfo->IsWindowsSysException()) {
-                        ER.ExceptionCode = pExceptInfo->GetWindowsSysExceptionCode();
-                    }
-                    else if (ExceptionCode == EXCEPTCODE_DBG_SINGLE_STEP_TRAP) {
-                        ER.ExceptionCode = 0x80000004; // EXCEPTION_SINGLE_STEP
-                    }
-                    else if (ExceptionCode == EXCEPTCODE_ACCESS_WINDOWS_GUARD_PAGE) {
-                        ER.ExceptionCode = 0x80000001;
-                    }
-                    else {
-                        return EHR_CONTINUE_SEARCH; // 无法接管,到这里Pintool其实会Crash了
-                    }
 
-                    ER.ExceptionAddress = (ADDRINT)PIN_GetExceptionAddress(pExceptInfo);
-
-                    MYCONTEXT Context{};
-                    EP.ContextRecord = &Context;
-                    EP.ExceptionRecord = &ER;
-
-                    int Status = func(&EP);
-                    LOG("VEH Handle Status " + std::to_string(Status) + "\n");
-                    if (Status == -1)// EXCEPTION_CONTINUE_EXECUTION 
-                    {
-                        return EHR_HANDLED;
-                    }
+                if (reason != CONTEXT_CHANGE_REASON_EXCEPTION) { // If the caught exception is not a Windows exception, return.
+                    return;
                 }
-                LOG("Application Has Unhandled Exception , May Crash\n");
-                return EHR_UNHANDLED; 
-            }
-        , NULL);
+
+                LOG("Exception Code " + static_cast<std::stringstream&>(std::stringstream() << std::hex << "0x" << info).str() + "\n");
+
+                LOG("From Context \n");
+                printContext(from,4);
+                LOG("To Context \n");
+                printContext(to,4);
+
+                switch (info)
+                {
+                case 0x80000003:
+                    break;
+                case 0xc0000005:
+                    break;
+                default:
+                    break;
+                }
+            }, 0);
     }
     std::cerr << "===============================================" << std::endl;
     std::cerr << "This application is instrumented by " << TOOL_NAME << " v." << VERSION << std::endl;
@@ -1418,10 +1475,17 @@ typedef MYCONTEXT* PMYCONTEXT;
     std::cerr << "See file pintool.log" << " for develop logs" << std::endl;
     std::cerr << "===============================================" << std::endl;
 
+    // Helper with performence monitor
     PIN_AddFiniFunction([](INT32 code, VOID* v) {
-        LOG("Application Exit , Code " + std::to_string(code));
+        LOG("Application Exit , Code " + std::to_string(code)+"\n");
+        time_t tNow;
+        time(&tNow);
+        double elapsed = difftime(tNow, tTraceStart);
+        LOG("Trace Cost " + std::to_string(elapsed) + "\n");
         }, nullptr);
+
     // Start the program, never returns
+    // Jit Mode
     PIN_StartProgram();
     return 0;
 }
