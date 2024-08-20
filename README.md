@@ -8,4 +8,6 @@
 
 - [ ] WinLicense 
 
+- [ ] Dont Support linux
+
   
