@@ -1438,6 +1438,8 @@ int main(int argc, char* argv[])
                         return "CONTEXT_CHANGE_REASON_EXCEPTION";
                     case CONTEXT_CHANGE_REASON_CALLBACK:
                         return "CONTEXT_CHANGE_REASON_CALLBACK";
+                    default:
+                        return "";
                     }
                     };
                 LOG("ContextChange reason " + TranslateReasonToString(reason)+"\n");
