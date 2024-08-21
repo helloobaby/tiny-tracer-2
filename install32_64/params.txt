@@ -2,8 +2,12 @@ kernel32;LoadLibraryW;1
 kernel32;LoadLibraryA;1
 kernel32;GetProcAddress;2
 advapi32;RegQueryValueW;3
-kernel32;CreateFileW;6
+kernel32;CreateFileW;1
 kernel32;LoadLibraryExW;1
 Kernel32;CreateProcessW;2
 Kernel32;CloseHandle;1
 ntdll;NtClose;1
+Kernel32;WideCharToMultiByte;3
+Kernel32;MultiByteToWideChar;3
+ntdll;LdrGetProcedureAddress;2
+ntdll;RtlInitAnsiString;2

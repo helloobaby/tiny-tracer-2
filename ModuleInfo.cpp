@@ -2,6 +2,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include "WindowsType.h"
 
 bool init_section(s_module &section, const ADDRINT &ImageBase, const SEC &sec)
 {
@@ -89,12 +90,23 @@ ADDRINT addr_to_rva(ADDRINT Address)
     return Address - base;
 }
 
+extern _VirtualQuery gVirtualQuery;
 ADDRINT query_region_base(ADDRINT memoryAddr)
 {
     if (memoryAddr == UNKNOWN_ADDR) {
         return UNKNOWN_ADDR;
     }
-    return GetPageOfAddr((ADDRINT)memoryAddr);
+
+    if (gVirtualQuery){
+    MEMORY_BASIC_INFORMATION mb;
+    auto r = gVirtualQuery(Addrint2VoidStar(memoryAddr), &mb, sizeof(mb));
+    if (!r)
+        return UNKNOWN_ADDR;
+
+    return VoidStar2Addrint(mb.AllocationBase);
+    }
+
+    return UNKNOWN_ADDR;
 }
 
 std::string get_unmangled_name(RTN rtn)
