@@ -110,8 +110,8 @@ VOID Log(BOOL now, const char* fmt ,...)
 {
     va_list argptr;
     va_start(argptr, fmt);
-    char inBuffer[0x1000];
-    sprintf_s(inBuffer, 0x1000,fmt, argptr);
+    char inBuffer[1000];
+    vsprintf_s(inBuffer, sizeof(inBuffer), fmt, argptr);
     va_end(argptr);
     LOG(inBuffer);
 }
@@ -228,7 +228,7 @@ inline VOID setReturnFromTheStack(const CONTEXT* ctx,ADDRINT AddrTo) {
     return;
 }
 
-
+// Pin 在64位系统上跟踪一些32位程序,一些FAR指令和会报错
 VOID SaveHeavensGateTransitions(const ADDRINT addrFrom, const ADDRINT addrTo, ADDRINT seg, const CONTEXT* ctx = NULL)
 {
     PinLocker locker;

@@ -4,9 +4,9 @@
 
 
 
-* [ ] Cant Trace VMProtect3.8  Protected Demo (32bit specific application )
+* [ ] Cant Trace VMProtect Full Protected Demo (32bit Compiled)
 
-- [ ] WinLicense 
+- [ ] WinLicense Detect Debugger
 
 - [ ] Dont Support linux
 
